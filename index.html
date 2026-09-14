@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>Singapore Air Quality</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        background: #168fe5;
+        min-height: 100vh;
+        color: white;
+        overflow-x: hidden;
+    }
+
+    .app {
+        width: 100%;
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 20px 18px 30px;
+        min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+    }
+
+    .title {
+        font-size: 27px;
+        font-weight: 700;
+    }
+
+    .subtitle {
+        font-size: 13px;
+        opacity: 0.85;
+        margin-top: 4px;
+    }
+
+    .refresh {
+        border: none;
+        background: rgba(255,255,255,0.15);
+        color: white;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        font-size: 21px;
+        cursor: pointer;
+    }
+
+    /* AQI mode tabs */
+    .tabs {
+        background: rgba(255,255,255,0.15);
+        border-radius: 22px;
+        padding: 5px;
+        display: flex;
+        margin-bottom: 20px;
+    }
+
+    .tab {
+        flex: 1;
+        text-align: center;
+        padding: 11px 5px;
+        border-radius: 18px;
+        font-size: 13px;
+        color: rgba(255,255,255,0.7);
+    }
+
+    .tab.active {
+        background: white;
+        color: #222;
+        font-weight: 600;
+    }
+
+    /* Main AQI */
+    .main-aqi {
+        text-align: center;
+        margin-top: 10px;
+        margin-bottom: 25px;
+    }
+
+    .aqi-label {
+        font-size: 15px;
+        opacity: 0.9;
+    }
+
+    .aqi-number {
+        font-size: 76px;
+        line-height: 0.95;
+        font-weight: 800;
+        margin: 8px 0;
+    }
+
+    .aqi-status {
+        display: inline-block;
+        padding: 7px 20px;
+        border-radius: 20px;
+        background: rgba(0,0,0,0.12);
+        font-size: 15px;
+        font-weight: 600;
+    }
+
+    .updated {
+        margin-top: 8px;
+        font-size: 12px;
+        opacity: 0.75;
+    }
+
+    /* Singapore regions */
+    .regions {
+        position: relative;
+        width: 100%;
+        max-width: 430px;
+        margin: 0 auto;
+        height: 430px;
+    }
+
+    .region {
+        position: absolute;
+        width: 110px;
+        height: 105px;
+        border-radius: 17px;
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+
+        color: #111;
+        box-shadow: 0 5px 12px rgba(0,0,0,0.12);
+
+        transition: transform 0.2s ease;
+    }
+
+    .region:hover {
+        transform: scale(1.04);
+    }
+
+    .region-name {
+        font-size: 13px;
+        font-weight: 500;
+        margin-bottom: 4px;
+    }
+
+    .region-aqi {
+        font-size: 31px;
+        line-height: 1;
+        font-weight: 800;
+    }
+
+    .region-status {
+        font-size: 11px;
+        margin-top: 5px;
+        font-weight: 500;
+    }
+
+    /* Geographic arrangement */
+    .north {
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .north:hover {
+        transform: translateX(-50%) scale(1.04);
+    }
+
+    .west {
+        top: 125px;
+        left: 0;
+    }
+
+    .central {
+        top: 125px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .central:hover {
+        transform: translateX(-50%) scale(1.04);
+    }
+
+    .east {
+        top: 125px;
+        right: 0;
+    }
+
+    .south {
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .south:hover {
+        transform: translateX(-50%) scale(1.04);
+    }
+
+    /* AQI colours */
+    .good {
+        background: #12d629;
+    }
+
+    .moderate {
+        background: #f5e500;
+    }
+
+    .unhealthy-sensitive {
+        background: #ff9f18;
+    }
+
+    .unhealthy {
+        background: #ef3030;
+        color: white;
+    }
+
+    .very-unhealthy {
+        background: #a632b9;
+        color: white;
+    }
+
+    .hazardous {
+        background: #7e0023;
+        color: white;
+    }
+
+    /* Footer */
+    .footer {
+        text-align: center;
+        font-size: 11px;
+        opacity: 0.75;
+        line-height: 1.5;
+        margin-top: 10px;
+    }
+
+    .error {
+        text-align: center;
+        margin: 20px 0;
+        padding: 12px;
+        background: rgba(255,0,0,0.2);
+        border-radius: 10px;
+        display: none;
+    }
+
+    @media (max-width: 380px) {
+
+        .regions {
+            height: 380px;
+        }
+
+        .region {
+            width: 95px;
+            height: 92px;
+        }
+
+        .region-aqi {
+            font-size: 27px;
+        }
+
+        .west {
+            top: 110px;
+        }
+
+        .central {
+            top: 110px;
+        }
+
+        .east {
+            top: 110px;
+        }
+    }
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- Header -->
+    <div class="header">
+
+        <div>
+            <div class="title">
+                Singapore Air Quality
+            </div>
+
+            <div class="subtitle">
+                Real-time AQICN / WAQI data
+            </div>
+        </div>
+
+        <button class="refresh"
+                onclick="loadAirQuality()"
+                title="Refresh">
+            ↻
+        </button>
+
+    </div>
+
+
+    <!-- Tabs -->
+    <div class="tabs">
+
+        <div class="tab active">
+            AQI
+        </div>
+
+        <div class="tab">
+            PM2.5
+        </div>
+
+        <div class="tab">
+            24-hr
+        </div>
+
+    </div>
+
+
+    <!-- Overall AQI -->
+    <div class="main-aqi">
+
+        <div class="aqi-label">
+            Singapore Air Quality
+        </div>
+
+        <div id="mainAQI"
+             class="aqi-number">
+            --
+        </div>
+
+        <div id="mainStatus"
+             class="aqi-status">
+            Loading...
+        </div>
+
+        <div id="updated"
+             class="updated">
+            Updating...
+        </div>
+
+    </div>
+
+
+    <!-- Error -->
+    <div id="error"
+         class="error">
+        Unable to retrieve AQICN data.
+    </div>
+
+
+    <!-- Regions -->
+    <div class="regions">
+
+        <!-- NORTH -->
+        <div id="north"
+             class="region north good">
+
+            <div class="region-name">
+                North
+            </div>
+
+            <div id="north-aqi"
+                 class="region-aqi">
+                --
+            </div>
+
+            <div id="north-status"
+                 class="region-status">
+                Loading
+            </div>
+
+        </div>
+
+
+        <!-- WEST -->
+        <div id="west"
+             class="region west good">
+
+            <div class="region-name">
+                West
+            </div>
+
+            <div id="west-aqi"
+                 class="region-aqi">
+                --
+            </div>
+
+            <div id="west-status"
+                 class="region-status">
+                Loading
+            </div>
+
+        </div>
+
+
+        <!-- CENTRAL -->
+        <div id="central"
+             class="region central good">
+
+            <div class="region-name">
+                Central
+            </div>
+
+            <div id="central-aqi"
+                 class="region-aqi">
+                --
+            </div>
+
+            <div id="central-status"
+                 class="region-status">
+                Loading
+            </div>
+
+        </div>
+
+
+        <!-- EAST -->
+        <div id="east"
+             class="region east good">
+
+            <div class="region-name">
+                East
+            </div>
+
+            <div id="east-aqi"
+                 class="region-aqi">
+                --
+            </div>
+
+            <div id="east-status"
+                 class="region-status">
+                Loading
+            </div>
+
+        </div>
+
+
+        <!-- SOUTH -->
+        <div id="south"
+             class="region south good">
+
+            <div class="region-name">
+                South
+            </div>
+
+            <div id="south-aqi"
+                 class="region-aqi">
+                --
+            </div>
+
+            <div id="south-status"
+                 class="region-status">
+                Loading
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="footer">
+
+        Data provided by the World Air Quality Index Project (AQICN/WAQI).<br>
+
+        AQI values are real-time and may be revised.
+
+    </div>
+
+</div>
+
+
+<script>
+
+    /*
+     * ==========================================
+     * AQICN CONFIGURATION
+     * ==========================================
+     */
+
+    const AQICN_TOKEN =
+        "001dbf7992affdb006794d9d0a0d23ac44b7e862";
+
+
+    /*
+     * Singapore AQICN stations
+     *
+     * North   = 1662
+     * East    = 1664
+     * South   = 1663
+     * West    = 1665
+     * Central = 1666
+     */
+
+    const regions = {
+
+        north: 1662,
+
+        east: 1664,
+
+        south: 1663,
+
+        west: 1665,
+
+        central: 1666
+
+    };
+
+
+    /*
+     * Get AQI category
+     */
+
+    function getAQIStatus(aqi) {
+
+        if (aqi === null ||
+            aqi === undefined ||
+            isNaN(aqi)) {
+
+            return {
+                text: "Unavailable",
+                className: "good"
+            };
+
+        }
+
+        aqi = Number(aqi);
+
+        if (aqi <= 50) {
+
+            return {
+                text: "Good",
+                className: "good"
+            };
+
+        } else if (aqi <= 100) {
+
+            return {
+                text: "Moderate",
+                className: "moderate"
+            };
+
+        } else if (aqi <= 150) {
+
+            return {
+                text: "Unhealthy for Sensitive Groups",
+                className: "unhealthy-sensitive"
+            };
+
+        } else if (aqi <= 200) {
+
+            return {
+                text: "Unhealthy",
+                className: "unhealthy"
+            };
+
+        } else if (aqi <= 300) {
+
+            return {
+                text: "Very Unhealthy",
+                className: "very-unhealthy"
+            };
+
+        } else {
+
+            return {
+                text: "Hazardous",
+                className: "hazardous"
+            };
+
+        }
+
+    }
+
+
+    /*
+     * Update region display
+     */
+
+    function updateRegion(region, aqi) {
+
+        const box =
+            document.getElementById(region);
+
+        const number =
+            document.getElementById(
+                region + "-aqi"
+            );
+
+        const status =
+            document.getElementById(
+                region + "-status"
+            );
+
+        number.textContent =
+            aqi ?? "--";
+
+
+        const result =
+            getAQIStatus(aqi);
+
+
+        status.textContent =
+            result.text;
+
+
+        /*
+         * Remove old AQI colour classes
+         */
+
+        box.classList.remove(
+            "good",
+            "moderate",
+            "unhealthy-sensitive",
+            "unhealthy",
+            "very-unhealthy",
+            "hazardous"
+        );
+
+
+        box.classList.add(
+            result.className
+        );
+
+    }
+
+
+    /*
+     * Get data from AQICN
+     */
+
+    async function getRegionAQI(id) {
+
+        const url =
+            `https://api.waqi.info/feed/@${id}/?token=${AQICN_TOKEN}`;
+
+        const response =
+            await fetch(url);
+
+        if (!response.ok) {
+
+            throw new Error(
+                "AQICN request failed"
+            );
+
+        }
+
+        const data =
+            await response.json();
+
+
+        if (data.status !== "ok") {
+
+            throw new Error(
+                data.data || "AQICN error"
+            );
+
+        }
+
+
+        return data.data;
+
+    }
+
+
+    /*
+     * Load all Singapore regions
+     */
+
+    async function loadAirQuality() {
+
+        const error =
+            document.getElementById("error");
+
+        error.style.display = "none";
+
+
+        try {
+
+            const results =
+                await Promise.all(
+
+                    Object.entries(regions)
+                    .map(async ([region, id]) => {
+
+                        const data =
+                            await getRegionAQI(id);
+
+                        return {
+                            region,
+                            data
+                        };
+
+                    })
+
+                );
+
+
+            let values = [];
+
+
+            results.forEach(
+                ({ region, data }) => {
+
+                    /*
+                     * AQICN returns the overall
+                     * station AQI as data.aqi
+                     */
+
+                    const aqi =
+                        Number(data.aqi);
+
+
+                    if (!isNaN(aqi)) {
+
+                        values.push(aqi);
+
+                    }
+
+
+                    updateRegion(
+                        region,
+                        aqi
+                    );
+
+                }
+            );
+
+
+
+            if (values.length > 0) {
+
+                const average =
+                    Math.round(
+                        values.reduce(
+                            (a, b) => a + b,
+                            0
+                        ) / values.length
+                    );
+
+
+                document.getElementById(
+                    "mainAQI"
+                ).textContent = average;
+
+
+                const result =
+                    getAQIStatus(average);
+
+
+                const mainStatus =
+                    document.getElementById(
+                        "mainStatus"
+                    );
+
+
+                mainStatus.textContent =
+                    result.text;
+
+
+                mainStatus.style.background =
+                    getStatusBackground(
+                        average
+                    );
+
+            }
+
+
+            /*
+             * Last update
+             */
+
+            document.getElementById(
+                "updated"
+            ).textContent =
+                "Updated: " +
+                new Date().toLocaleTimeString(
+                    "en-SG",
+                    {
+                        hour: "2-digit",
+                        minute: "2-digit"
+                    }
+                );
+
+        }
+
+        catch (err) {
+
+            console.error(err);
+
+            error.style.display =
+                "block";
+
+            error.textContent =
+                "Unable to retrieve AQICN data. " +
+                "Please check your AQICN token.";
+
+        }
+
+    }
+
+
+    /*
+     * Status background for main badge
+     */
+
+    function getStatusBackground(aqi) {
+
+        if (aqi <= 50)
+            return "#0abf25";
+
+        if (aqi <= 100)
+            return "#d7c900";
+
+        if (aqi <= 150)
+            return "#e78900";
+
+        if (aqi <= 200)
+            return "#c92020";
+
+        if (aqi <= 300)
+            return "#812692";
+
+        return "#65001c";
+
+    }
+
+
+    /*
+     * Initial load
+     */
+
+    loadAirQuality();
+
+
+    /*
+     * Refresh every 15 minutes.
+     *
+     * AQICN states that its map tiles
+     * are refreshed around every 15 minutes.
+     */
+
+    setInterval(
+        loadAirQuality,
+        15 * 60 * 1000
+    );
+
+</script>
+
+</body>
+</html>
