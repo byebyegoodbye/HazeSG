@@ -504,10 +504,106 @@
             font-size: 23px;
         }
     }
+
+/* =========================================================
+   WEATHER / ATMOSPHERE BACKGROUND
+   Weather.json-inspired procedural sky renderer.
+   The original JSON supplies cloud speeds, cloud layouts,
+   scales and alpha parameters; this standalone canvas
+   recreates the visual atmosphere without requiring the
+   original WebGL/shader assets.
+   ========================================================= */
+
+#weatherCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -5;
+    pointer-events: none;
+}
+
+.weather-vignette {
+    position: fixed;
+    inset: 0;
+    z-index: -4;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 50% 20%, rgba(255,255,255,.10), transparent 42%),
+        linear-gradient(to bottom, rgba(255,255,255,.02), rgba(0,0,0,.10));
+    transition: background 1.4s ease;
+}
+
+.weather-haze {
+    position: fixed;
+    inset: -20%;
+    z-index: -3;
+    pointer-events: none;
+    opacity: 0;
+    filter: blur(28px);
+    transform: translate3d(0,0,0);
+    background:
+        radial-gradient(ellipse at 20% 60%, rgba(224,211,170,.38), transparent 38%),
+        radial-gradient(ellipse at 72% 45%, rgba(216,202,164,.30), transparent 42%),
+        radial-gradient(ellipse at 45% 90%, rgba(201,190,160,.24), transparent 45%);
+    transition: opacity 1.5s ease;
+    animation: hazeDrift 22s ease-in-out infinite alternate;
+}
+
+.weather-haze.visible-haze {
+    opacity: .65;
+}
+
+.weather-haze.visible-smog {
+    opacity: .88;
+    animation-duration: 14s;
+}
+
+.weather-haze.visible-fog {
+    opacity: 1;
+    animation-duration: 30s;
+    background:
+        radial-gradient(ellipse at 20% 60%, rgba(214,214,205,.54), transparent 44%),
+        radial-gradient(ellipse at 72% 45%, rgba(205,207,201,.50), transparent 48%),
+        radial-gradient(ellipse at 45% 90%, rgba(195,198,193,.44), transparent 50%);
+}
+
+@keyframes hazeDrift {
+    from { transform: translate3d(-2%, 1%, 0) scale(1.02); }
+    to   { transform: translate3d(3%, -2%, 0) scale(1.08); }
+}
+
+.weather-state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 9px;
+    padding: 6px 11px;
+    border-radius: 999px;
+    background: rgba(0,0,0,.14);
+    font-size: 11px;
+    font-weight: 700;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.weather-state-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 9px currentColor;
+}
+
 </style>
 </head>
 
 <body>
+
+<canvas id="weatherCanvas" aria-hidden="true"></canvas>
+<div id="weatherHaze" class="weather-haze" aria-hidden="true"></div>
+<div class="weather-vignette" aria-hidden="true"></div>
+
 
 <div class="app">
 
@@ -533,6 +629,7 @@
         <div id="mainAQI" class="aqi-number">--</div>
         <div id="mainStatus" class="aqi-status">Loading...</div>
         <div id="updated" class="updated">Retrieving AQICN data...</div>
+<div class="weather-state-badge" id="weatherStateBadge"><span class="weather-state-dot"></span><span id="weatherStateText">Weather: Loading</span></div>
     </div>
 
     <div id="error" class="error"></div>
@@ -578,7 +675,7 @@
 
     <div class="footer">
         Data provided by the World Air Quality Index Project (WAQI/AQICN).<br>
-         .
+        Air-quality data is provided by the Singapore National Environment Agency (NEA).
     </div>
 </div>
 
@@ -695,6 +792,435 @@
 
 <script>
 
+/* =========================================================
+   WEATHER.JSON-INSPIRED ATMOSPHERE ENGINE
+   ---------------------------------------------------------
+   This uses the cloudSpeed, sky compositions, cloud scales
+   and alpha/uniform values from the supplied Weather.json.
+
+   It is intentionally procedural: the supplied JSON describes
+   the renderer's cloud geometry/parameters, but does not
+   contain the actual cloud texture images or shader program.
+   ========================================================= */
+
+const WEATHER_CONFIG = {
+    clouds: {
+        cloud42: { edge: 0.257, bottomA: 0.121, bottomB: 0.399, alpha: 0.847 },
+        cloud43: { edge: 0.230, bottomA: 0.200, bottomB: 0.400, alpha: 0.776 },
+        cloud44: { edge: 0.307, bottomA: 0.071, bottomB: 0.619, alpha: 0.434 },
+        cloud46: { edge: 0.292, bottomA: 0.078, bottomB: 0.577, alpha: 0.704 },
+        cloud48: { edge: 0.271, bottomA: 0.213, bottomB: 0.449, alpha: 0.776 },
+
+        cloud11: { edge: 0.230, bottomA: 0.235, bottomB: 0.527, alpha: 1 },
+        cloud12: { edge: 0.242, bottomA: 0.171, bottomB: 0.384, alpha: 1 },
+        cloud13: { edge: 0.228, bottomA: 0.185, bottomB: 0.377, alpha: 1 },
+        cloud14: { edge: 0.230, bottomA: 0.000, bottomB: 0.400, alpha: 1 },
+        cloud15: { edge: 0.230, bottomA: 0.200, bottomB: 0.300, alpha: 1 },
+        cloud16: { edge: 0.214, bottomA: 0.071, bottomB: 0.278, alpha: 1 },
+        cloud17: { edge: 0.218, bottomA: 0.256, bottomB: 0.370, alpha: 1 },
+        cloud18: { edge: 0.220, bottomA: 0.221, bottomB: 0.427, alpha: 1 },
+        cloud19: { edge: 0.277, bottomA: 0.327, bottomB: 0.400, alpha: 1 },
+        cloud20: { edge: 0.230, bottomA: 0.200, bottomB: 0.400, alpha: 1 },
+        cloud21: { edge: 0.230, bottomA: 0.200, bottomB: 0.400, alpha: 1 },
+        cloud22: { edge: 0.249, bottomA: 0.548, bottomB: 0.462, alpha: 1 },
+        cloud23: { edge: 0.285, bottomA: 0.149, bottomB: 0.313, alpha: 1 },
+
+        cloud31: { edge: 0.288, bottomA: 0.294, bottomB: 0.531, alpha: 1 },
+        cloud32: { edge: 0.288, bottomA: 0.200, bottomB: 0.488, alpha: 1 },
+        cloud33: { edge: 0.316, bottomA: 0.052, bottomB: 0.281, alpha: 1 },
+        cloud34: { edge: 0.071, bottomA: 0.014, bottomB: 0.121, alpha: 1 },
+        cloud35: { edge: 0.171, bottomA: 0.057, bottomB: 0.128, alpha: 1 },
+        cloud36: { edge: 0.230, bottomA: 0.238, bottomB: 0.573, alpha: 1 },
+        cloud37: { edge: 0.204, bottomA: 0.317, bottomB: 0.536, alpha: 1 },
+        cloud38: { edge: 0.256, bottomA: 0.306, bottomB: 0.470, alpha: 1 }
+    },
+
+    skies: {
+        SKY_SUNNY_N: {
+            speed: 0,
+            clouds: []
+        },
+
+        SKY_CLOUDY_L: {
+            speed: 40,
+            clouds: [
+                ["cloud14", -14061, 4363, -4200, 4.14],
+                ["cloud23", -6159, 7716, -3850, 3.30],
+                ["cloud22", -5634, 6122, -3500, 4.56],
+                ["cloud19", -1118, 6464, -3498, 6.06],
+                ["cloud17", -4728, 4865, -3150, 3.65],
+                ["cloud20", 617, 5831, -3118, 2.27],
+                ["cloud44", -3151, 5074, -3000, 2.68],
+                ["cloud11", -7224, 5400, -2800, 3.08],
+                ["cloud12", 2672, 4269, -2740, 5.15],
+                ["cloud13", -6341, 3320, -2450, 2.79],
+                ["cloud18", 1063, 2361, -1862, 2.24],
+                ["cloud19", -7856, 1770, -1750, 3.53],
+                ["cloud18", -2594, 1592, -1400, 1.85],
+                ["cloud17", -678, 1626, -1308, 1.76],
+                ["cloud15", -3926, 1225, -1050, 1.44],
+                ["cloud14", -652, 951, -828, 1.50],
+                ["cloud21", -548, 711, -797, 1.30],
+                ["cloud16", -1974, 1121, -700, 1.14],
+                ["cloud16", 543, 777, -409, .88],
+                ["cloud15", 312, 406, -40, .50]
+            ]
+        },
+
+        SKY_SANDY: {
+            speed: 60,
+            clouds: [
+                ["cloud46", -18, 1274, -1400, 3.54],
+                ["cloud46", -8364, 2050, -1400, 4.83],
+                ["cloud43", -1762, 1351, -1050, .99],
+                ["cloud43", -5135, 945, -1050, 1.97],
+                ["cloud42", -707, 175, -700, 3.98],
+                ["cloud42", -8572, 442, -700, 3.99],
+                ["cloud48", -1920, -895, -350, 1.77],
+                ["cloud48", -4967, -552, -350, 1.79],
+                ["cloud44", 175, 830, 0, .98],
+                ["cloud44", -3844, 760, 0, 1.41]
+            ]
+        },
+
+        SKY_SMOGGY: {
+            speed: 100,
+            clouds: [
+                ["cloud46", 1652, 2050, -1400, 4.83],
+                ["cloud46", -8364, 2050, -1400, 4.83],
+                ["cloud43", -1050, 945, -1050, 1.97],
+                ["cloud43", -5135, 945, -1050, 1.97],
+                ["cloud42", -298, 442, -700, 3.99],
+                ["cloud42", -8572, 442, -700, 3.99],
+                ["cloud48", -1256, -552, -350, 1.79],
+                ["cloud48", -4967, -552, -350, 1.79],
+                ["cloud44", -920, 760, 0, 1.41],
+                ["cloud44", -3844, 760, 0, 1.41]
+            ]
+        },
+
+        SKY_FOGGY: {
+            speed: 20,
+            clouds: [
+                ["cloud46", 1652, 2050, -1400, 4.83],
+                ["cloud46", -8364, 2050, -1400, 4.83],
+                ["cloud43", -1050, 945, -1050, 1.97],
+                ["cloud43", -5135, 945, -1050, 1.97],
+                ["cloud42", -298, 442, -700, 3.99],
+                ["cloud42", -8572, 442, -700, 3.99],
+                ["cloud48", -1256, -552, -350, 1.79],
+                ["cloud48", -4967, -552, -350, 1.79],
+                ["cloud44", -920, 760, 0, 1.41],
+                ["cloud44", -3844, 760, 0, 1.41]
+            ]
+        },
+
+        SKY_OVERCAST: {
+            speed: 30,
+            clouds: [
+                ["cloud14", -4909, 4363, -4200, 4.14],
+                ["cloud23", 2339, 7716, -3850, 3.30],
+                ["cloud22", 3822, 6122, -3500, 4.56],
+                ["cloud19", -13684, 6464, -3498, 6.06],
+                ["cloud17", 2841, 4865, -3150, 3.65],
+                ["cloud20", -6512, 5831, -3118, 2.27],
+                ["cloud44", -10059, 5074, -3000, 2.68],
+                ["cloud11", -690, 5400, -2800, 3.08],
+                ["cloud12", -8007, 4269, -2740, 5.15],
+                ["cloud13", -462, 3320, -2450, 2.79],
+                ["cloud18", -3717, 2361, -1862, 2.24],
+                ["cloud19", -536, 1770, -1750, 3.53],
+                ["cloud18", 1321, 1592, -1400, 1.85],
+                ["cloud17", -4422, 1626, -1308, 1.76],
+                ["cloud15", -666, 1225, -1050, 1.44],
+                ["cloud21", -3334, 711, -797, 1.30],
+                ["cloud16", 632, 972, -700, 1.14]
+            ]
+        }
+    },
+
+    palettes: {
+        SUNNY:  { top: "#168fe5", mid: "#4db8ef", bottom: "#a8e4ff", haze: 0 },
+        CLOUDY: { top: "#4c9fc9", mid: "#79b4c8", bottom: "#a9c6c9", haze: .10 },
+        HAZE:   { top: "#669eae", mid: "#aab7ad", bottom: "#aba48e", haze: .70 },
+        SMOG:   { top: "#6e929a", mid: "#9e9e91", bottom: "#c2b999", haze: .78 },
+        FOG:    { top: "#71858a", mid: "#a4aaa3", bottom: "#c3c4bb", haze: 1 }
+    }
+};
+
+const weatherCanvas = document.getElementById("weatherCanvas");
+const weatherCtx = weatherCanvas.getContext("2d", { alpha: true });
+
+let weatherVisualState = "SUNNY";
+let weatherFrame = 0;
+let weatherLastTime = performance.now();
+let weatherDpr = Math.min(window.devicePixelRatio || 1, 2);
+
+function resizeWeatherCanvas() {
+    weatherDpr = Math.min(window.devicePixelRatio || 1, 2);
+    weatherCanvas.width = Math.floor(window.innerWidth * weatherDpr);
+    weatherCanvas.height = Math.floor(window.innerHeight * weatherDpr);
+    weatherCanvas.style.width = window.innerWidth + "px";
+    weatherCanvas.style.height = window.innerHeight + "px";
+    weatherCtx.setTransform(weatherDpr, 0, 0, weatherDpr, 0, 0);
+}
+
+window.addEventListener("resize", resizeWeatherCanvas);
+resizeWeatherCanvas();
+
+function weatherStateFromAQI(aqi) {
+    aqi = Number(aqi);
+
+    if (!Number.isFinite(aqi)) return "SUNNY";
+    if (aqi <= 50) return "SUNNY";
+    if (aqi <= 75) return "CLOUDY";
+    if (aqi <= 100) return "HAZE";
+    if (aqi <= 150) return "SMOG";
+    return "FOG";
+}
+
+function getWeatherSky(state) {
+    if (state === "SUNNY") return WEATHER_CONFIG.skies.SKY_SUNNY_N;
+    if (state === "CLOUDY") return WEATHER_CONFIG.skies.SKY_CLOUDY_L;
+    if (state === "HAZE") return WEATHER_CONFIG.skies.SKY_SANDY;
+    if (state === "SMOG") return WEATHER_CONFIG.skies.SKY_SMOGGY;
+    return WEATHER_CONFIG.skies.SKY_FOGGY;
+}
+
+function hexToRgb(hex) {
+    const value = hex.replace("#", "");
+    return {
+        r: parseInt(value.substring(0, 2), 16),
+        g: parseInt(value.substring(2, 4), 16),
+        b: parseInt(value.substring(4, 6), 16)
+    };
+}
+
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+
+function mixHex(a, b, t) {
+    const A = hexToRgb(a);
+    const B = hexToRgb(b);
+
+    return `rgb(
+        ${Math.round(lerp(A.r, B.r, t))},
+        ${Math.round(lerp(A.g, B.g, t))},
+        ${Math.round(lerp(A.b, B.b, t))}
+    )`;
+}
+
+function cloudColor(state) {
+    if (state === "SUNNY") return "rgba(255,255,255,.30)";
+    if (state === "CLOUDY") return "rgba(235,241,240,.42)";
+    if (state === "HAZE") return "rgba(222,215,188,.30)";
+    if (state === "SMOG") return "rgba(205,196,163,.27)";
+    return "rgba(220,223,216,.34)";
+}
+
+function drawCloud(ctx, cloud, time, state) {
+    const [id, x, y, z, scale] = cloud;
+    const cfg = WEATHER_CONFIG.clouds[id] || {
+        edge: .23, bottomA: .15, bottomB: .40, alpha: 1
+    };
+
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+
+    /*
+     * The source JSON uses a large 3D coordinate space.
+     * We fold that space into the viewport while preserving
+     * relative depth and scale.
+     */
+    const depth = Math.max(.18, Math.min(1.8, 9000 / Math.abs(z || -900)));
+    const baseScale = Math.max(.18, Math.min(2.2, scale * .18 * depth));
+
+    const travel = (time * (getWeatherSky(state).speed || 0) * 0.018);
+    const px = ((x * 0.035 + travel) % (W + 500) + (W + 500)) % (W + 500) - 250;
+    const py = H * (.10 + (Math.abs(y) % 6200) / 10500);
+    const radiusX = Math.max(45, W * cfg.edge * .75 * baseScale);
+    const radiusY = Math.max(22, radiusX * (.24 + cfg.bottomB * .55));
+
+    const gradient = ctx.createRadialGradient(
+        px, py, 0,
+        px, py, radiusX
+    );
+
+    const alpha = Math.min(0.48, Math.max(.04, cfg.alpha * (.12 + cfg.bottomB * .28)));
+
+    gradient.addColorStop(0, cloudColor(state).replace(")", `,${alpha})`).replace("rgba(", "rgba("));
+    gradient.addColorStop(.58, cloudColor(state).replace(")", `,${alpha * .45})`).replace("rgba(", "rgba("));
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.scale(1, radiusY / radiusX);
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(0, 0, radiusX, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawAtmosphere(now) {
+    const dt = Math.min(50, now - weatherLastTime);
+    weatherLastTime = now;
+    weatherFrame += dt;
+
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const palette = WEATHER_CONFIG.palettes[weatherVisualState];
+    const stateSpeed = getWeatherSky(weatherVisualState).speed;
+
+    weatherCtx.clearRect(0, 0, W, H);
+
+    /* Sky gradient */
+    const sky = weatherCtx.createLinearGradient(0, 0, 0, H);
+
+    if (weatherVisualState === "SUNNY") {
+        sky.addColorStop(0, palette.top);
+        sky.addColorStop(.48, palette.mid);
+        sky.addColorStop(1, palette.bottom);
+    } else {
+        sky.addColorStop(0, palette.top);
+        sky.addColorStop(.52, palette.mid);
+        sky.addColorStop(1, palette.bottom);
+    }
+
+    weatherCtx.fillStyle = sky;
+    weatherCtx.fillRect(0, 0, W, H);
+
+    /* Soft sun / ambient glow */
+    if (weatherVisualState === "SUNNY" || weatherVisualState === "CLOUDY") {
+        const glow = weatherCtx.createRadialGradient(
+            W * .72, H * .12, 0,
+            W * .72, H * .12, Math.max(W, H) * .55
+        );
+        glow.addColorStop(0, "rgba(255,255,255,.28)");
+        glow.addColorStop(1, "rgba(255,255,255,0)");
+        weatherCtx.fillStyle = glow;
+        weatherCtx.fillRect(0, 0, W, H);
+    }
+
+    /* Weather.json-inspired cloud composition */
+    const skyConfig = getWeatherSky(weatherVisualState);
+    const clouds = skyConfig.clouds || [];
+
+    weatherCtx.globalCompositeOperation = "screen";
+    clouds.forEach(cloud => drawCloud(
+        weatherCtx,
+        cloud,
+        weatherFrame / 1000,
+        weatherVisualState
+    ));
+    weatherCtx.globalCompositeOperation = "source-over";
+
+    /* Haze / smog / fog atmospheric veil */
+    const hazeStrength = palette.haze;
+    if (hazeStrength > 0) {
+        const drift = Math.sin(weatherFrame / 8000) * W * .04;
+
+        const veil = weatherCtx.createLinearGradient(
+            0, H * .15,
+            0, H
+        );
+
+        veil.addColorStop(0, `rgba(220,215,190,${.06 * hazeStrength})`);
+        veil.addColorStop(.45, `rgba(220,215,190,${.12 * hazeStrength})`);
+        veil.addColorStop(1, `rgba(210,205,185,${.28 * hazeStrength})`);
+
+        weatherCtx.fillStyle = veil;
+        weatherCtx.fillRect(0, 0, W, H);
+
+        /* Layered moving haze banks */
+        for (let i = 0; i < 4; i++) {
+            const y = H * (.35 + i * .17);
+            const x = W * (.20 + i * .22) + drift * (i % 2 ? -1 : 1);
+
+            const fog = weatherCtx.createRadialGradient(
+                x, y, 0,
+                x, y, W * (.55 + i * .08)
+            );
+
+            const alpha = (.035 + i * .012) * hazeStrength;
+            fog.addColorStop(0, `rgba(235,226,201,${alpha})`);
+            fog.addColorStop(.65, `rgba(220,215,197,${alpha * .55})`);
+            fog.addColorStop(1, "rgba(220,215,197,0)");
+
+            weatherCtx.fillStyle = fog;
+            weatherCtx.fillRect(0, 0, W, H);
+        }
+    }
+
+    requestAnimationFrame(drawAtmosphere);
+}
+
+requestAnimationFrame(drawAtmosphere);
+
+function applyWeatherVisual(aqi) {
+    const nextState = weatherStateFromAQI(aqi);
+    weatherVisualState = nextState;
+
+    const haze = document.getElementById("weatherHaze");
+    haze.classList.remove(
+        "visible-haze",
+        "visible-smog",
+        "visible-fog"
+    );
+
+    if (nextState === "HAZE") {
+        haze.classList.add("visible-haze");
+    } else if (nextState === "SMOG") {
+        haze.classList.add("visible-smog");
+    } else if (nextState === "FOG") {
+        haze.classList.add("visible-fog");
+    }
+
+    const labels = {
+        SUNNY: "Weather: Sunny",
+        CLOUDY: "Weather: Cloudy",
+        HAZE: "Weather: Haze",
+        SMOG: "Weather: Smog",
+        FOG: "Weather: Haze"
+    };
+
+    const badge = document.getElementById("weatherStateBadge");
+    const text = document.getElementById("weatherStateText");
+
+    if (text) text.textContent = labels[nextState];
+
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    const palette = WEATHER_CONFIG.palettes[nextState];
+    if (themeMeta) themeMeta.setAttribute("content", palette.top);
+
+    if (badge) {
+        badge.style.background =
+            nextState === "SUNNY"
+                ? "rgba(0,80,150,.18)"
+                : "rgba(70,55,30,.18)";
+    }
+
+    /*
+     * The background follows the latest Singapore-wide
+     * dashboard AQI average. It does not replace the AQICN
+     * pollutant readings; it is a visual representation.
+     */
+}
+
+
+/*
+=========================================================
+AQICN / WAQI CONFIGURATION
+=========================================================
+
+Replace the placeholder below with your own AQICN token.
+
+Example:
+const AQICN_TOKEN = "abc123...";
+=========================================================
+*/
+
 const AQICN_TOKEN = "001dbf7992affdb006794d9d0a0d23ac44b7e862";
 
 
@@ -736,6 +1262,9 @@ This is what allows the popup to show:
 */
 
 const regionData = {};
+
+/* Start with the supplied Weather.json sunny scene. */
+applyWeatherVisual(50);
 
 
 /*
@@ -950,6 +1479,10 @@ async function loadAirQuality() {
 
         /*
         Singapore-wide display.
+
+        This is the arithmetic average of the five
+        regional station AQIs for this dashboard.
+        It is NOT an official NEA Singapore-wide PSI.
         */
 
         const values =
@@ -981,6 +1514,9 @@ async function loadAirQuality() {
             document.getElementById(
                 "mainStatus"
             ).textContent = status.text;
+
+            /* Drive the Weather.json-inspired background */
+            applyWeatherVisual(average);
 
         }
 
@@ -1231,10 +1767,8 @@ function openDetails(region) {
     document.getElementById(
         "w-condition"
     ).textContent =
-        data.weather &&
-        data.weather.h
-            ? data.weather.h
-            : "N/A";
+        weatherVisualState.charAt(0) +
+        weatherVisualState.slice(1).toLowerCase();
 
 
     document.getElementById(
@@ -1267,7 +1801,7 @@ function openDetails(region) {
         "AQICN station ID: H" +
         info.id +
         "<br>" +
-        "Data source: ACIQN";
+        "Data source: Singapore National Environment Agency (NEA)";
 
 
     /*
