@@ -224,6 +224,16 @@
         transform: translateX(-50%) scale(.95);
     }
 
+ .longvale {
+ 	top: 238px;
+     	right: 0;
+     
+    }
+
+    .longvale:active {
+        transform: scale(.95);
+    }
+
     .region-name {
         font-size: 13px;
         font-weight: 600;
@@ -505,14 +515,6 @@
         }
     }
 
-/* =========================================================
-   WEATHER / ATMOSPHERE BACKGROUND
-   Weather.json-inspired procedural sky renderer.
-   The original JSON supplies cloud speeds, cloud layouts,
-   scales and alpha parameters; this standalone canvas
-   recreates the visual atmosphere without requiring the
-   original WebGL/shader assets.
-   ========================================================= */
 
 #weatherCanvas {
     position: fixed;
@@ -671,6 +673,13 @@
             <div class="tap-hint">Tap for details</div>
         </button>
 
+        <button id="longvale" class="region longvale good" onclick="openDetails('longvale')">
+            <div class="region-name">Longvale</div>
+            <div id="longvale-aqi" class="region-aqi">--</div>
+            <div id="longvale-status" class="region-status">Loading</div>
+            <div class="tap-hint">Tap for details</div>
+        </button>
+
     </div>
 
     <div class="footer">
@@ -791,17 +800,6 @@
 
 
 <script>
-
-/* =========================================================
-   WEATHER.JSON-INSPIRED ATMOSPHERE ENGINE
-   ---------------------------------------------------------
-   This uses the cloudSpeed, sky compositions, cloud scales
-   and alpha/uniform values from the supplied Weather.json.
-
-   It is intentionally procedural: the supplied JSON describes
-   the renderer's cloud geometry/parameters, but does not
-   contain the actual cloud texture images or shader program.
-   ========================================================= */
 
 const WEATHER_CONFIG = {
     clouds: {
@@ -1201,77 +1199,32 @@ function applyWeatherVisual(aqi) {
                 : "rgba(70,55,30,.18)";
     }
 
-    /*
-     * The background follows the latest Singapore-wide
-     * dashboard AQI average. It does not replace the AQICN
-     * pollutant readings; it is a visual representation.
-     */
+
 }
 
-
-/*
-=========================================================
-AQICN / WAQI CONFIGURATION
-=========================================================
-
-Replace the placeholder below with your own AQICN token.
-
-Example:
-const AQICN_TOKEN = "abc123...";
-=========================================================
-*/
-
 const AQICN_TOKEN = "001dbf7992affdb006794d9d0a0d23ac44b7e862";
-
-
-/*
-Singapore regional AQICN stations.
-
-North   = H1662 / @1662
-South   = H1663 / @1663
-East    = H1664 / @1664
-West    = H1665 / @1665
-Central = H1666 / @1666
-*/
 
 const regions = {
     north:   { name: "North",   id: 1662 },
     south:   { name: "South",   id: 1663 },
     east:    { name: "East",    id: 1664 },
     west:    { name: "West",    id: 1665 },
-    central: { name: "Central", id: 1666 }
+    central: { name: "Central", id: 1666 },
 };
 
+const extraStations = {
+    longvale: {
+      name: "Longvale",
+        id: 2216938,
+        apiId: "A2216938"
+    }
 
-/*
-Stores the COMPLETE API response for every region.
-
-This is what allows the popup to show:
-- AQI
-- PM2.5
-- PM10
-- NO2
-- CO
-- SO2
-- O3
-- temperature
-- humidity
-- pressure
-- wind
-- observation time
-*/
+};
 
 const regionData = {};
+const extraStationData = {};
 
-/* Start with the supplied Weather.json sunny scene. */
 applyWeatherVisual(50);
-
-
-/*
-=========================================================
-AQI STATUS
-=========================================================
-*/
 
 function getAQIStatus(aqi) {
 
@@ -1320,14 +1273,6 @@ function getAQIStatus(aqi) {
 }
 
 
-/*
-Get an AQI pollutant value from:
-data.iaqi.pm25.v
-etc.
-
-Returns "n/a" when the station does not provide
-that pollutant.
-*/
 
 function getIAQI(data, pollutant) {
 
@@ -1395,6 +1340,47 @@ function updateRegion(region, data) {
     box.classList.add(result.className);
 }
 
+function updateLongvale(data) {
+
+    const aqi = Number(data.aqi);
+
+    const number =
+        document.getElementById("longvale-aqi");
+
+    const status =
+        document.getElementById("longvale-status");
+
+    const box =
+        document.getElementById("longvale");
+
+    if (!number || !status || !box) {
+        return;
+    }
+
+    number.textContent =
+        Number.isFinite(aqi)
+            ? aqi
+            : "--";
+
+    const result =
+        getAQIStatus(aqi);
+
+    status.textContent =
+        result.text;
+
+    box.classList.remove(
+        "good",
+        "moderate",
+        "unhealthy-sensitive",
+        "unhealthy",
+        "very-unhealthy",
+        "hazardous"
+    );
+
+    box.classList.add(
+        result.className
+    );
+}
 
 /*
 =========================================================
@@ -1427,6 +1413,53 @@ async function getRegionAQI(id) {
     return json.data;
 }
 
+async function getLongvaleAQI() {
+
+    const url =
+        "https://api.waqi.info/feed/A2216938/?token=" +
+        encodeURIComponent(AQICN_TOKEN);
+
+    console.log("LONGVALE REQUEST:", url);
+
+    const response = await fetch(url, {
+        cache: "no-store"
+    });
+
+    console.log(
+        "LONGVALE HTTP STATUS:",
+        response.status
+    );
+
+    if (!response.ok) {
+        throw new Error(
+            "Longvale HTTP " + response.status
+        );
+    }
+
+    const json = await response.json();
+
+    console.log(
+        "LONGVALE JSON:",
+        json
+    );
+
+    if (json.status !== "ok") {
+
+        throw new Error(
+            typeof json.data === "string"
+                ? json.data
+                : "Longvale API returned an error"
+        );
+    }
+
+    if (!json.data) {
+        throw new Error(
+            "Longvale returned no station data"
+        );
+    }
+
+    return json.data;
+}
 
 /*
 =========================================================
@@ -1475,6 +1508,57 @@ async function loadAirQuality() {
 
         const results =
             await Promise.all(requests);
+
+/*
+=========================================================
+LOAD LONGVALE
+=========================================================
+*/
+
+try {
+
+    const longvaleData =
+        await getLongvaleAQI();
+
+    extraStationData.longvale =
+        longvaleData;
+
+    updateLongvale(
+        longvaleData
+    );
+
+    console.log(
+        "LONGVALE AQI:",
+        longvaleData.aqi
+    );
+
+} catch (error) {
+
+    console.error(
+        "LONGVALE LOAD ERROR:",
+        error
+    );
+
+    const number =
+        document.getElementById(
+            "longvale-aqi"
+        );
+
+    const status =
+        document.getElementById(
+            "longvale-status"
+        );
+
+    if (number) {
+        number.textContent = "--";
+    }
+
+    if (status) {
+        status.textContent =
+            "Unavailable";
+    }
+}
+
 
 
         /*
@@ -1798,7 +1882,12 @@ function openDetails(region) {
         "<strong>" +
         escapeHTML(stationName) +
         "</strong><br>" +
-        "AQICN station ID: H" +
+       "AQICN station ID: " +
+(
+    region === "longvale"
+        ? "A" + info.id
+        : "H" + info.id
+) +
         info.id +
         "<br>" +
         "Data source: Singapore National Environment Agency (NEA)";
@@ -1818,11 +1907,6 @@ function openDetails(region) {
 }
 
 
-/*
-=========================================================
-CLOSE DETAILS
-=========================================================
-*/
 
 function closeDetails() {
 
@@ -1836,9 +1920,6 @@ function closeDetails() {
 }
 
 
-/*
-Click outside modal closes it.
-*/
 
 function overlayClose(event) {
 
@@ -1852,10 +1933,6 @@ function overlayClose(event) {
 }
 
 
-/*
-Escape key closes modal.
-*/
-
 document.addEventListener(
     "keydown",
     function(event) {
@@ -1868,11 +1945,6 @@ document.addEventListener(
 );
 
 
-/*
-=========================================================
-FORMATTING HELPERS
-=========================================================
-*/
 
 function formatValue(value) {
 
@@ -1950,11 +2022,6 @@ function escapeHTML(value) {
 }
 
 
-/*
-=========================================================
-ERROR
-=========================================================
-*/
 
 function showError(message) {
 
@@ -1976,20 +2043,6 @@ function hideError() {
 
 }
 
-
-/*
-=========================================================
-TABS
-
-The first version uses the AQI dashboard as the main
-display. The tabs are intentionally kept visually
-consistent with your screenshot.
-
-The PM2.5 tab changes the main label but regional
-boxes continue to show overall AQI.
-
-=========================================================
-*/
 
 function setTab(button, tabName) {
 
@@ -2026,11 +2079,6 @@ function setTab(button, tabName) {
 }
 
 
-/*
-=========================================================
-INITIAL LOAD
-=========================================================
-*/
 
 loadAirQuality();
 
