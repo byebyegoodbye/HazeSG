@@ -597,6 +597,55 @@ body {
     box-shadow: 0 0 9px currentColor;
 }
 
+.ai-forecast-card {
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+    color: #111;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.ai-forecast-card:active {
+    transform: scale(.95);
+}
+
+.ai-forecast-card .weather-value {
+    color: #168fe5;
+}
+
+.ai-forecast-result {
+    display: none;
+    margin-top: 12px;
+    padding: 15px;
+    border-radius: 16px;
+    background: #eaf5ff;
+    border: 1px solid rgba(22,143,229,.15);
+    color: #1d2a35;
+}
+
+.ai-forecast-result.show {
+    display: block;
+}
+
+.ai-forecast-title {
+    font-size: 14px;
+    font-weight: 900;
+    color: #168fe5;
+    margin-bottom: 8px;
+}
+
+#aiForecastText {
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.ai-forecast-disclaimer {
+    margin-top: 10px;
+    font-size: 9px;
+    line-height: 1.4;
+    color: #7b828c;
+}
+
 </style>
 </head>
 
@@ -797,7 +846,41 @@ body {
                 <div class="weather-label">Observation</div>
             </div>
 
+ <button
+    type="button"
+    class="weather-card ai-forecast-card"
+    onclick="getWeatherForecastAI()"
+>
+    <div class="weather-icon">🤖</div>
+    <div class="weather-value">AI</div>
+    <div class="weather-label">Weather Forecast AI</div>
+</button>
+
         </div>
+
+<div class="container">
+    <input
+        type="password"
+        id="apiKeyInput"
+        placeholder="Enter OpenRouter API Key, Empty for Default"
+    />
+    <button onclick="saveApiKey()">Save</button>
+</div>
+
+<div id="aiForecastResult" class="ai-forecast-result">
+    <div class="ai-forecast-title">
+        🤖 AI Weather Forecast
+    </div>
+
+    <div id="aiForecastText">
+        <!-- AI forecast appears here -->
+    </div>
+
+    <div class="ai-forecast-disclaimer">
+        AI-generated forecast based on the latest station observation.
+        Not an official weather forecast.
+    </div>
+</div>
 
         <div id="stationInfo" class="station-info">
             AQICN station information
@@ -1236,6 +1319,9 @@ document.body.style.background = palette.bottom;
 }
 
 const AQICN_TOKEN = "001dbf7992affdb006794d9d0a0d23ac44b7e862";
+const OPENROUTER_API_KEY = "YOUR_DEFAULT_API_KEY";
+const OPENROUTER_MODEL = "openrouter/free";
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const regions = {
     north:   { name: "North",   id: 1662 },
@@ -1728,6 +1814,8 @@ OPEN REGION DETAILS
 
 function openDetails(region) {
 
+  window.currentWeatherRegion = region;
+
     const data = regionData[region];
 
     if (!data) {
@@ -1744,6 +1832,12 @@ function openDetails(region) {
     ).textContent =
         info.name + " Singapore";
 
+const aiBox =
+    document.getElementById("aiForecastResult");
+
+if (aiBox) {
+    aiBox.classList.remove("show");
+}
 
     /*
     Overall AQI
@@ -1980,6 +2074,232 @@ function closeDetails() {
 
 }
 
+function saveApiKey() {
+    const input = document.getElementById("apiKeyInput");
+    const apiKey = input.value.trim();
+
+    if (apiKey) {
+        localStorage.setItem("openrouterApiKey", apiKey);
+        alert("OpenRouter API Key saved.");
+    } else {
+        localStorage.removeItem("openrouterApiKey");
+        alert("API Key cleared. Default API Key will be used.");
+    }
+}
+
+
+async function getWeatherForecastAI() {
+
+const apiKey =
+    localStorage.getItem("openrouterApiKey") ||
+    DEFAULT_OPENROUTER_API_KEY;
+
+    /*
+     * Determine which station is currently open.
+     */
+    if (!window.currentWeatherRegion) {
+        alert("Please open a station first.");
+        return;
+    }
+
+    const region = window.currentWeatherRegion;
+
+    const data =
+        regionData[region] ||
+        extraStationData[region];
+
+    if (!data) {
+        alert("Weather data is not available yet. Please refresh.");
+        return;
+    }
+
+    /*
+     * Extract current weather information.
+     */
+    const temperature = getWeather(data, "t");
+    const humidity = getWeather(data, "h");
+    const wind = getWeather(data, "w");
+    const pressure = getWeather(data, "p");
+
+    const condition =
+        weatherVisualState.charAt(0) +
+        weatherVisualState.slice(1).toLowerCase();
+
+    const observation =
+        data.time && data.time.s
+            ? data.time.s
+            : "Unknown";
+
+    const stationInfo =
+        regions[region] ||
+        extraStations[region];
+
+    const stationName =
+        data.city &&
+        data.city.name
+            ? data.city.name
+            : stationInfo.name;
+
+    /*
+     * Find the button and show loading state.
+     */
+    const button =
+        document.querySelector(".ai-forecast-card");
+
+    if (!button) return;
+
+    const originalHTML = button.innerHTML;
+
+    button.disabled = true;
+
+    button.innerHTML = `
+        <div class="weather-icon">⏳</div>
+        <div class="weather-value">AI</div>
+        <div class="weather-label">Generating...</div>
+    `;
+
+    /*
+     * AI prompt.
+     */
+    const prompt = `
+You are a weather forecasting assistant for Singapore. 
+
+Based ONLY on the current observed weather information below,
+provide a short practical weather forecast.
+
+Station: ${stationName}
+Temperature: ${temperature} °C
+Humidity: ${humidity} %
+Wind: ${wind}
+Pressure: ${pressure} hPa
+Current condition: ${condition}
+Observation time: ${observation}
+
+Please:
+1. Give a likely short-term weather outlook for the next few hours.
+2. State whether rain is likely, possible, or unlikely.
+3. Mention if the conditions suggest thunderstorms or heavy rain may develop.
+4. Mention anything notable about heat, humidity, wind, or atmospheric conditions.
+5. Give one simple practical recommendation.
+
+Keep the response concise, around 3-5 sentences.
+
+Important:
+- This is an AI-generated forecast, not an official meteorological forecast.
+- Do not claim certainty.
+- Do not invent weather radar, satellite, rainfall probability, or forecast data that was not provided.
+`;
+
+    const messages = [
+        {
+            role: "system",
+            content:
+                "You are a concise weather forecasting assistant specializing in Singapore weather."
+        },
+        {
+            role: "user",
+            content: prompt
+        }
+    ];
+
+    const payload = {
+        model: OPENROUTER_MODEL,
+        messages: messages
+    };
+
+    try {
+
+        const response = await fetch(
+            OPENROUTER_API_URL,
+            {
+                method: "POST",
+
+                headers: {
+                    "Authorization":
+                        `Bearer ${apiKey}`,
+
+                    "Content-Type":
+                        "application/json",
+
+                    "HTTP-Referer":
+                        "Singapore Air Quality",
+
+                    "X-Title":
+                        "Singapore Air Quality"
+                },
+
+                body: JSON.stringify(payload)
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "OpenRouter HTTP " +
+                response.status
+            );
+        }
+
+        const result =
+            await response.json();
+
+        const responseText =
+            result?.choices?.[0]?.message?.content ||
+            "No forecast was returned. Please try again.";
+
+        /*
+         * Restore button.
+         */
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+
+        /*
+         * Show the forecast in a popup.
+         */
+        showWeatherForecastResult(
+            stationName,
+            responseText
+        );
+
+function showWeatherForecastResult(
+    stationName,
+    responseText
+) {
+
+    const box =
+        document.getElementById(
+            "aiForecastResult"
+        );
+
+    const text =
+        document.getElementById(
+            "aiForecastText"
+        );
+
+    if (!box || !text) return;
+
+    text.innerHTML =
+        escapeHTML(responseText)
+            .replace(/\n/g, "<br>");
+
+    box.classList.add("show");
+}
+
+    } catch (error) {
+
+        console.error(
+            "Weather Forecast AI error:",
+            error
+        );
+
+        button.innerHTML = originalHTML;
+        button.disabled = false;
+
+        alert(
+            "Unable to generate the AI weather forecast.\n\n" +
+            error.message
+        );
+    }
+}
 
 
 function overlayClose(event) {
@@ -2155,6 +2475,14 @@ setInterval(
     loadAirQuality,
     15 * 60 * 1000
 );
+
+document.addEventListener("DOMContentLoaded", () => {
+    const savedKey = localStorage.getItem("openrouterApiKey");
+
+    if (savedKey) {
+        document.getElementById("apiKeyInput").value = savedKey;
+    }
+});
 
 </script>
 
