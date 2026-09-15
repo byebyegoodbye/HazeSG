@@ -1055,9 +1055,32 @@ function drawCloud(ctx, cloud, time, state) {
 
     const alpha = Math.min(0.48, Math.max(.04, cfg.alpha * (.12 + cfg.bottomB * .28)));
 
-    gradient.addColorStop(0, cloudColor(state).replace(")", `,${alpha})`).replace("rgba(", "rgba("));
-    gradient.addColorStop(.58, cloudColor(state).replace(")", `,${alpha * .45})`).replace("rgba(", "rgba("));
-    gradient.addColorStop(1, "rgba(255,255,255,0)");
+function rgbaWithAlpha(color, alpha) {
+    const match = color.match(
+        /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/
+    );
+
+    if (!match) {
+        return `rgba(255,255,255,${alpha})`;
+    }
+
+    return `rgba(${match[1]},${match[2]},${match[3]},${alpha})`;
+}
+
+gradient.addColorStop(
+    0,
+    rgbaWithAlpha(cloudColor(state), alpha)
+);
+
+gradient.addColorStop(
+    .58,
+    rgbaWithAlpha(cloudColor(state), alpha * .45)
+);
+
+gradient.addColorStop(
+    1,
+    "rgba(255,255,255,0)"
+);
 
     ctx.save();
     ctx.translate(px, py);
