@@ -155,7 +155,7 @@
         position: relative;
         width: 100%;
         max-width: 430px;
-        height: 405px;
+        height: 714px;
         margin: 0 auto;
     }
 
@@ -214,22 +214,26 @@
         right: 0;
     }
 
-    .south {
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-    }
-
     .south:active {
         transform: translateX(-50%) scale(.95);
     }
 
- .longvale {
- 	top: 238px;
-     	right: 0;
-     
-    }
+.longvale {
+    top: 238px;
+    right: 0;
+}
 
+.south {
+    bottom: auto;
+    top: 357px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.simplicity {
+    top: 357px;
+    right: 0;
+}
     .longvale:active {
         transform: scale(.95);
     }
@@ -492,7 +496,7 @@
         }
 
         .regions {
-            height: 370px;
+            height: 480px;
         }
 
         .region {
@@ -674,11 +678,19 @@
         </button>
 
         <button id="longvale" class="region longvale good" onclick="openDetails('longvale')">
-            <div class="region-name">Longvale</div>
+            <div class="region-name">South East</div>
             <div id="longvale-aqi" class="region-aqi">--</div>
             <div id="longvale-status" class="region-status">Loading</div>
             <div class="tap-hint">Tap for details</div>
         </button>
+
+
+	<button id="simplicity" class="region simplicity good" onclick="openDetails('simplicity')">
+    <div class="region-name">Marine Parade</div>
+    <div id="simplicity-aqi" class="region-aqi">--</div>
+    <div id="simplicity-status" class="region-status">Loading</div>
+    <div class="tap-hint">Tap for details</div>
+	</button>
 
     </div>
 
@@ -1213,11 +1225,21 @@ const regions = {
 };
 
 const extraStations = {
-    longvale: {
+   
+ longvale: {
       name: "Longvale",
         id: 2216938,
         apiId: "A2216938"
+
+    },
+
+   simplicity: {
+        name: "Simplicity @ AALTO",
+        id: 2535910,
+        apiId: "A2535910"
     }
+
+    
 
 };
 
@@ -1413,53 +1435,120 @@ async function getRegionAQI(id) {
     return json.data;
 }
 
-async function getLongvaleAQI() {
-
+async function getExtraStationAQI(station) {
     const url =
-        "https://api.waqi.info/feed/A2216938/?token=" +
+        "https://api.waqi.info/feed/" +
+        encodeURIComponent(station.apiId) +
+        "/?token=" +
         encodeURIComponent(AQICN_TOKEN);
 
-    console.log("LONGVALE REQUEST:", url);
+    console.log("Requesting:", url);
 
-    const response = await fetch(url, {
-        cache: "no-store"
-    });
+    const response = await fetch(url);
+    const data = await response.json();
 
-    console.log(
-        "LONGVALE HTTP STATUS:",
-        response.status
-    );
+    console.log(station.name, data);
 
-    if (!response.ok) {
+    if (data.status !== "ok") {
         throw new Error(
-            "Longvale HTTP " + response.status
+            station.name + ": " + (data.data || "AQICN error")
         );
     }
-
-    const json = await response.json();
-
-    console.log(
-        "LONGVALE JSON:",
-        json
-    );
-
-    if (json.status !== "ok") {
-
-        throw new Error(
-            typeof json.data === "string"
-                ? json.data
-                : "Longvale API returned an error"
-        );
-    }
-
-    if (!json.data) {
-        throw new Error(
-            "Longvale returned no station data"
-        );
-    }
-
-    return json.data;
+    return data.data;
 }
+
+
+function updateExtraStation(key, data) {
+
+    const aqi = Number(data.aqi);
+
+    const number =
+        document.getElementById(key + "-aqi");
+
+    const status =
+        document.getElementById(key + "-status");
+
+    const box =
+        document.getElementById(key);
+
+    if (!number || !status || !box) {
+        return;
+    }
+
+    number.textContent =
+        Number.isFinite(aqi)
+            ? aqi
+            : "--";
+
+    const result =
+        getAQIStatus(aqi);
+
+    status.textContent =
+        result.text;
+
+    box.classList.remove(
+        "good",
+        "moderate",
+        "unhealthy-sensitive",
+        "unhealthy",
+        "very-unhealthy",
+        "hazardous"
+    );
+
+    box.classList.add(
+        result.className
+    );
+}
+
+async function loadExtraStations() {
+
+    for (const [key, station] of Object.entries(extraStations)) {
+
+        try {
+
+            const data =
+                await getExtraStationAQI(station);
+
+            extraStationData[key] = data;
+
+            updateExtraStation(
+                key,
+                data
+            );
+
+            console.log(
+                station.name + " AQI:",
+                data.aqi
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Failed to load " + station.name,
+                error
+            );
+
+            const number =
+                document.getElementById(
+                    key + "-aqi"
+                );
+
+            const status =
+                document.getElementById(
+                    key + "-status"
+                );
+
+            if (number) {
+                number.textContent = "--";
+            }
+
+            if (status) {
+                status.textContent = "Unavailable";
+            }
+        }
+    }
+}
+
 
 /*
 =========================================================
@@ -1509,56 +1598,7 @@ async function loadAirQuality() {
         const results =
             await Promise.all(requests);
 
-/*
-=========================================================
-LOAD LONGVALE
-=========================================================
-*/
-
-try {
-
-    const longvaleData =
-        await getLongvaleAQI();
-
-    extraStationData.longvale =
-        longvaleData;
-
-    updateLongvale(
-        longvaleData
-    );
-
-    console.log(
-        "LONGVALE AQI:",
-        longvaleData.aqi
-    );
-
-} catch (error) {
-
-    console.error(
-        "LONGVALE LOAD ERROR:",
-        error
-    );
-
-    const number =
-        document.getElementById(
-            "longvale-aqi"
-        );
-
-    const status =
-        document.getElementById(
-            "longvale-status"
-        );
-
-    if (number) {
-        number.textContent = "--";
-    }
-
-    if (status) {
-        status.textContent =
-            "Unavailable";
-    }
-}
-
+	await loadExtraStations();
 
 
         /*
