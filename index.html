@@ -20,13 +20,17 @@
         --panel: rgba(255,255,255,0.14);
     }
 
-    body {
-        font-family: Arial, Helvetica, sans-serif;
-        background: var(--blue);
-        color: white;
-        min-height: 100vh;
-        overflow-x: hidden;
-    }
+html {
+    background: transparent;
+}
+
+ body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: transparent;
+    color: white;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
 
     button {
         font: inherit;
@@ -678,7 +682,7 @@
         </button>
 
         <button id="longvale" class="region longvale good" onclick="openDetails('longvale')">
-            <div class="region-name">South East</div>
+            <div class="region-name">South East (Bedok Reservoir)</div>
             <div id="longvale-aqi" class="region-aqi">--</div>
             <div id="longvale-status" class="region-status">Loading</div>
             <div class="tap-hint">Tap for details</div>
